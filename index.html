@@ -560,6 +560,7 @@
 
         function handleModelProviderChange() {
             const selectVal = document.getElementById('model-provider').value;
+            localStorage.setItem('sermon_selected_provider', selectVal);
             const badge = document.getElementById('provider-badge-info');
             if (selectVal === 'gemini-built-in') {
                 badge.innerHTML = `Built-in Gemini is unavailable on static Netlify deploys. Select Gemini / Google API instead.`;
@@ -599,6 +600,15 @@
             document.getElementById('key-gemini').value = localStorage.getItem('sermon_key_gemini') || '';
         }
 
+        function loadSelectedProvider() {
+            const provider = localStorage.getItem('sermon_selected_provider');
+            const select = document.getElementById('model-provider');
+            if (provider && Array.from(select.options).some((option) => option.value === provider)) {
+                select.value = provider;
+            }
+            handleModelProviderChange();
+        }
+
         function extractJsonObject(text) {
             const trimmed = String(text || '').trim();
             const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -609,12 +619,19 @@
             return candidate.slice(start, end + 1);
         }
 
-        function explainApiError(status, responseText) {
+        function explainApiError(provider, status, responseText) {
+            const providerName = provider === 'openai' ? 'OpenAI' : provider === 'claude' ? 'Anthropic Claude' : 'Gemini';
             if (status === 429) {
+                if (provider === 'openai') {
+                    return "Your OpenAI API key has reached its current quota or rate limit. Check billing/usage on your OpenAI account, wait for the quota window to reset, or try another key.";
+                }
+                if (provider === 'claude') {
+                    return "Your Anthropic Claude API key has reached its current quota or rate limit. Check billing/usage on your Anthropic account, wait for the quota window to reset, or try another key.";
+                }
                 return "Your Gemini API key has reached its current quota or rate limit. Wait for the quota window to reset, check billing/quota in Google AI Studio, or try again with a different key.";
             }
             if (status === 401 || status === 403) {
-                return "Gemini rejected this API key. Check that the key is copied correctly, active, and allowed to use the Gemini API.";
+                return `${providerName} rejected this API key. Check that the key is copied correctly, active, and allowed to use this API.`;
             }
             if (status === 400 && responseText.includes("response mime type")) {
                 return "Gemini rejected the response format for this request. Please refresh and try again with the latest app version.";
@@ -811,7 +828,7 @@ Return your final output strictly as valid, parsable JSON matching this schema:
                     const response = await fetch(url, options);
                     if (!response.ok) {
                         const errText = await response.text();
-                        const err = new Error(explainApiError(response.status, errText));
+                        const err = new Error(explainApiError(provider, response.status, errText));
                         err.status = response.status;
                         err.responseText = errText;
                         throw err;
@@ -1320,6 +1337,7 @@ User: ${userMsgText}
                 systemTheme = 'light';
             }
             loadKeysIntoUI();
+            loadSelectedProvider();
             loadLibraryFromLocal();
             renderLibraryUI();
 
