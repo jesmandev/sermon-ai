@@ -124,12 +124,11 @@
                     <div class="space-y-1">
                         <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Choose AI Model Account</label>
                         <select id="model-provider" onchange="handleModelProviderChange()" class="w-full bg-slate-100 dark:bg-slate-800 border-0 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-brand-500 text-slate-800 dark:text-slate-200 font-medium">
-                            <option value="gemini-built-in">✨ Built-in Gemini (Free / No Key Needed)</option>
+                            <option value="gemini-custom" selected>Gemini / Google API (API Key Required)</option>
                             <option value="openai">ChatGPT / OpenAI API (BYOK)</option>
                             <option value="claude">Claude / Anthropic API (BYOK)</option>
-                            <option value="gemini-custom">Gemini / Google API (BYOK)</option>
                         </select>
-                        <p id="provider-badge-info" class="text-xs text-brand-600 dark:text-brand-400 font-medium pt-1">💡 Running live on Google Gemini 3 Flash built-in server!</p>
+                        <p id="provider-badge-info" class="text-xs text-brand-600 dark:text-brand-400 font-medium pt-1">Uses Google Gemini model 'gemini-2.5-flash' via your API Key.</p>
                     </div>
 
                     <!-- YouTube Link Input -->
@@ -538,7 +537,7 @@
             const selectVal = document.getElementById('model-provider').value;
             const badge = document.getElementById('provider-badge-info');
             if (selectVal === 'gemini-built-in') {
-                badge.innerHTML = `✨ Built-in Gemini (Free / No Key Needed)`;
+                badge.innerHTML = `Built-in Gemini is unavailable on static Netlify deploys. Select Gemini / Google API instead.`;
             } else if (selectVal === 'openai') {
                 badge.innerHTML = `💡 Uses OpenAI model 'gpt-4o-mini' via your API Key.`;
             } else if (selectVal === 'claude') {
@@ -627,7 +626,7 @@
                 } else if (modelProvider === 'claude') {
                     apiKey = localStorage.getItem('sermon_key_claude');
                     if (!apiKey) throw new Error("Please configure your Anthropic Claude API Key under 'API Accounts'.");
-                } else if (modelProvider === 'gemini-custom') {
+                } else if (modelProvider === 'gemini-custom' || modelProvider === 'gemini-built-in') {
                     apiKey = localStorage.getItem('sermon_key_gemini');
                     if (!apiKey) throw new Error("Please configure your Google Gemini API Key under 'API Accounts'.");
                 }
@@ -769,36 +768,7 @@ Return your final output strictly as valid, parsable JSON matching this schema:
             };
 
             if (provider === 'gemini-built-in') {
-                const apiKey = ""; 
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-                
-                const payload = {
-                    contents: [{ parts: [{ text: userQuery }] }],
-                    tools: [{ "google_search": {} }], 
-                };
-
-                if (requireJson) {
-                    payload.generationConfig = {
-                        responseMimeType: "application/json"
-                    };
-                }
-
-                if (systemInstruction) {
-                    payload.systemInstruction = {
-                        parts: [{ text: systemInstruction }]
-                    };
-                }
-
-                const res = await fetchWithRetry(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const result = await res.json();
-                
-                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (!text) throw new Error("Did not receive a text generation back from the Google Gemini engine.");
-                return text;
+                provider = 'gemini-custom';
 
             } else if (provider === 'openai') {
                 const url = 'https://api.openai.com/v1/chat/completions';
@@ -854,8 +824,10 @@ Return your final output strictly as valid, parsable JSON matching this schema:
                 const result = await res.json();
                 return result.content[0].text;
 
-            } else if (provider === 'gemini-custom') {
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${key}`;
+            }
+
+            if (provider === 'gemini-custom') {
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
                 
                 const payload = {
                     contents: [{ parts: [{ text: userQuery }] }]
@@ -1158,7 +1130,11 @@ Return your final output strictly as valid, parsable JSON matching this schema:
 
                 if (modelProvider === 'openai') apiKey = localStorage.getItem('sermon_key_openai');
                 else if (modelProvider === 'claude') apiKey = localStorage.getItem('sermon_key_claude');
-                else if (modelProvider === 'gemini-custom') apiKey = localStorage.getItem('sermon_key_gemini');
+                else if (modelProvider === 'gemini-custom' || modelProvider === 'gemini-built-in') apiKey = localStorage.getItem('sermon_key_gemini');
+
+                if (!apiKey && (modelProvider === 'gemini-custom' || modelProvider === 'gemini-built-in')) {
+                    throw new Error("Please configure your Google Gemini API Key under 'API Accounts'.");
+                }
 
                 const sermonOverviewStr = JSON.stringify(currentSermonData);
                 const chatHistoryString = chatHistory.map(h => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.text}`).join("\n");
