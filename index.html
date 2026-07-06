@@ -400,6 +400,7 @@
         let chatHistory = [];
         let systemTheme = 'light';
         let savedLibraryMap = new Map(); // Fallback in-memory collection map
+        const LOCAL_LIBRARY_KEY = 'sermon_ai_saved_library_v1';
 
         // Cloud Storage configuration parameters
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-sermon-ai';
@@ -407,6 +408,29 @@
         let auth = null;
         let userId = null;
         let cloudSynced = false;
+
+        function persistLibraryToLocal() {
+            try {
+                localStorage.setItem(LOCAL_LIBRARY_KEY, JSON.stringify(Array.from(savedLibraryMap.values())));
+            } catch (e) {
+                console.warn("Could not persist local sermon library.", e);
+            }
+        }
+
+        function loadLibraryFromLocal() {
+            try {
+                const raw = localStorage.getItem(LOCAL_LIBRARY_KEY);
+                if (!raw) return;
+                const items = JSON.parse(raw);
+                if (!Array.isArray(items)) return;
+                savedLibraryMap.clear();
+                items.forEach((item) => {
+                    if (item && item.id) savedLibraryMap.set(item.id, item);
+                });
+            } catch (e) {
+                console.warn("Could not restore local sermon library.", e);
+            }
+        }
 
         // Initialize Cloud Storage if configuration context is present
         async function initCloudStorage() {
@@ -451,6 +475,7 @@
                 snapshot.forEach((doc) => {
                     savedLibraryMap.set(doc.id, { id: doc.id, ...doc.data() });
                 });
+                persistLibraryToLocal();
                 renderLibraryUI();
                 updateSaveButtonState();
             }, (error) => {
@@ -574,6 +599,16 @@
             document.getElementById('key-gemini').value = localStorage.getItem('sermon_key_gemini') || '';
         }
 
+        function extractJsonObject(text) {
+            const trimmed = String(text || '').trim();
+            const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+            const candidate = fenced ? fenced[1].trim() : trimmed;
+            const start = candidate.indexOf('{');
+            const end = candidate.lastIndexOf('}');
+            if (start === -1 || end === -1 || end <= start) return candidate;
+            return candidate.slice(start, end + 1);
+        }
+
         // Fetch actual YouTube Title and Metadata
         async function fetchYoutubeMetadata(url) {
             try {
@@ -667,13 +702,21 @@ Please query web search grounding to fetch the exact sermon structure, transcrip
 
                 setAnalysisStep('ai', 'running', 'Extracting core structural points strictly...');
 
+                const sourceMode = manualTranscriptText ? "PASTED_TRANSCRIPT" : "YOUTUBE_URL_ONLY";
                 const prompt = `
-Analyze the following sermon metadata or transcript text. You must treat this with absolute accuracy.
+Analyze the following sermon context with strict extractive accuracy.
+
+SOURCE MODE: ${sourceMode}
+
 STRICT SUMMARY INSTRUCTIONS:
-1. Do NOT hallucinate, invent, or create synthetic sermon points. 
-2. Do NOT add new words, alter key terms, or add external scriptures/sermon content that were not treating in the original sermon.
-3. If the sermon lists a specific count of treated points (for example, "10 Biblical Anchors for Exploits & Unshakable Faith" or similar numeric outlines treating specific anchors), you must query search grounding to find those EXACT points, listing ALL of them in order with the precise terms/titles used in the sermon.
-4. Keep the summary structure directly proportional to what was treated in the sermon. Just format it clearly.
+1. Do NOT hallucinate, invent, rename, reorder, or create sermon points.
+2. Use the exact sermon title provided by YouTube metadata unless a pasted transcript explicitly gives a more complete sermon title.
+3. If SOURCE MODE is PASTED_TRANSCRIPT, the pasted transcript is the only source of truth. Preserve the speaker's wording as much as possible. Do not add new phrases, explanations, scriptures, or theological language that are not in the transcript. Your job is to structure and lightly condense, not rewrite.
+4. If SOURCE MODE is YOUTUBE_URL_ONLY, use the exact video title, video ID, speaker/source, and any available search-grounded references to identify the exact treated outline. If the exact transcript or exact numbered treated list cannot be verified, do not invent it. Return only verified points and state uncertainty in the overview.
+5. If the sermon treats a numbered outline, such as 10 anchors, return that full count only when the exact point names are present in the transcript or verified source. Keep the original order and terminology.
+6. For "point", use the speaker's treated point/anchor title verbatim or as close to verbatim as the source allows.
+7. For "scriptures", include only scriptures explicitly connected to that point in the source. If none are explicit, use "Not explicitly stated".
+8. For "details", use short extractive notes from the source. Do not paraphrase into new claims.
 
 Metadata / Transcript Context:
 ${transcriptContext}
@@ -682,12 +725,12 @@ Return your final output strictly as valid, parsable JSON matching this schema:
 {
   "title": "${resolvedTitle.replace(/"/g, '\\"')}",
   "speaker": "${resolvedSpeaker.replace(/"/g, '\\"')}",
-  "overview": "A thorough, 3-sentence sermon high-level overview of the message and its core theme based strictly on the transcript.",
+  "overview": "Two or three short sentences based only on verified source wording. If URL-only source lacks an exact transcript, say that only verified metadata/search details were available.",
   "keynotes": [
     {
-      "point": "Exact Key Point or Anchor Name treated in the sermon (e.g., Anchor 1, Anchor 2, up to the full treated list)",
-      "scriptures": "Exact scriptures referenced in this point, separated by commas",
-      "details": "Direct, factual details of this point summarizing only what the speaker said."
+      "point": "Exact treated point or anchor name from the source",
+      "scriptures": "Exact scriptures explicitly referenced in this point, separated by commas, or Not explicitly stated",
+      "details": "Short extractive details using the source wording as much as possible"
     }
   ],
   "applications": [
@@ -703,8 +746,8 @@ Return your final output strictly as valid, parsable JSON matching this schema:
 }
 `;
 
-                const summaryResult = await executeAiCall(modelProvider, apiKey, prompt, true);
-                const parsedData = JSON.parse(summaryResult);
+                const summaryResult = await executeAiCall(modelProvider, apiKey, prompt, true, "", !manualTranscriptText);
+                const parsedData = JSON.parse(extractJsonObject(summaryResult));
                 
                 if (resolvedTitle !== "Sermon Outline" && parsedData.title !== resolvedTitle) {
                     parsedData.title = resolvedTitle;
@@ -749,7 +792,7 @@ Return your final output strictly as valid, parsable JSON matching this schema:
             }
         }
 
-        async function executeAiCall(provider, key, userQuery, requireJson = false, systemInstruction = "") {
+        async function executeAiCall(provider, key, userQuery, requireJson = false, systemInstruction = "", useSearchGrounding = false) {
             const fetchWithRetry = async (url, options, retries = 3, delay = 1000) => {
                 try {
                     const response = await fetch(url, options);
@@ -833,6 +876,10 @@ Return your final output strictly as valid, parsable JSON matching this schema:
                     contents: [{ parts: [{ text: userQuery }] }]
                 };
 
+                if (useSearchGrounding) {
+                    payload.tools = [{ google_search: {} }];
+                }
+
                 if (requireJson) {
                     payload.generationConfig = {
                         responseMimeType: "application/json"
@@ -873,13 +920,14 @@ Return your final output strictly as valid, parsable JSON matching this schema:
                     const block = document.createElement('div');
                     block.className = "border border-slate-100 dark:border-slate-800/80 rounded-2xl p-4 hover:shadow-md transition-all";
                     block.innerHTML = `
-                        <div class="flex items-start justify-between">
-                            <div class="space-y-1">
+                        <div class="space-y-2 min-w-0">
+                            <div class="space-y-1 min-w-0 w-full">
                                 <span class="text-xs font-semibold text-brand-600 dark:text-brand-400">Point ${idx + 1}</span>
-                                <h4 class="font-bold text-slate-800 dark:text-slate-100 text-sm">${keynote.point || 'Outline Keynote'}</h4>
+                                <h4 class="font-bold text-slate-800 dark:text-slate-100 text-sm leading-snug break-words w-full">${keynote.point || 'Outline Keynote'}</h4>
                             </div>
-                            <span class="inline-flex items-center text-xs bg-brand-50 dark:bg-brand-950/40 text-brand-700 dark:text-brand-300 font-bold px-2.5 py-1 rounded-full shrink-0">
-                                <span class="material-symbols-outlined text-xs mr-1">book</span> ${keynote.scriptures || 'Ref'}
+                            <span class="inline-flex items-start text-xs bg-brand-50 dark:bg-brand-950/40 text-brand-700 dark:text-brand-300 font-bold px-2.5 py-1.5 rounded-xl max-w-full whitespace-normal break-words leading-relaxed">
+                                <span class="material-symbols-outlined text-xs mr-1 mt-0.5 shrink-0">book</span>
+                                <span class="min-w-0 break-words">${keynote.scriptures || 'Ref'}</span>
                             </span>
                         </div>
                         <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mt-2 pt-2 border-t border-slate-50 dark:border-slate-800/50">${keynote.details || 'Sermon outline analysis.'}</p>
@@ -955,11 +1003,13 @@ Return your final output strictly as valid, parsable JSON matching this schema:
                 } catch (e) {
                     console.error("Cloud save failed, falling back to session-based local library.", e);
                     savedLibraryMap.set(sermonId, currentSermonData);
+                    persistLibraryToLocal();
                     showToast("Saved to offline session library.", "success");
                     renderLibraryUI();
                 }
             } else {
                 savedLibraryMap.set(sermonId, currentSermonData);
+                persistLibraryToLocal();
                 showToast("Sermon saved to local study library!", "success");
                 renderLibraryUI();
             }
@@ -1005,11 +1055,13 @@ Return your final output strictly as valid, parsable JSON matching this schema:
                 } catch (e) {
                     console.error("Cloud delete error:", e);
                     savedLibraryMap.delete(id);
+                    persistLibraryToLocal();
                     renderLibraryUI();
                     showToast("Sermon deleted from library.", "success");
                 }
             } else {
                 savedLibraryMap.delete(id);
+                persistLibraryToLocal();
                 renderLibraryUI();
                 showToast("Sermon deleted from library.", "success");
             }
@@ -1249,6 +1301,8 @@ User: ${userMsgText}
                 systemTheme = 'light';
             }
             loadKeysIntoUI();
+            loadLibraryFromLocal();
+            renderLibraryUI();
 
             // Register PWA Service Worker
             if ('serviceWorker' in navigator) {
