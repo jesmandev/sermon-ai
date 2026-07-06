@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sermon-ai-cache-v5';
+const CACHE_NAME = 'sermon-ai-cache-v6';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -41,8 +41,11 @@ self.addEventListener('fetch', (event) => {
             const responseToCache = response.clone();
             caches.open(CACHE_NAME)
               .then((cache) => {
-                // Cache dynamic queries except chrome extensions/external API requests
-                if (event.request.url.startsWith(self.location.origin)) {
+                const requestUrl = new URL(event.request.url);
+                const isFunctionRequest = requestUrl.pathname.startsWith('/.netlify/functions/');
+
+                // Cache local app assets, but never cache dynamic serverless function responses.
+                if (event.request.url.startsWith(self.location.origin) && !isFunctionRequest) {
                   cache.put(event.request, responseToCache);
                 }
               });
