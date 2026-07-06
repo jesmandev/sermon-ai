@@ -1,0 +1,24 @@
+{
+  "short_name": "SermonAI",
+  "name": "Sermon AI Summarizer & Chat",
+  "icons": [
+    {
+      "src": "https://img.icons8.com/fluency/192/000000/bookmark.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://img.icons8.com/fluency/512/000000/bookmark.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#ffffff",
+  "theme_color": "#8b5cf6",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/"
+}

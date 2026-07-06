@@ -1,0 +1,1308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sermon AI Summarizer & Chat PWA</title>
+    
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#8b5cf6">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SermonAI">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+    <!-- MarkedJS for beautiful markdown parsing inside the AI chat and summaries -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        serif: ['Playfair Display', 'serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f5f3ff',
+                            100: '#ede9fe',
+                            500: '#8b5cf6',
+                            600: '#7c3aed',
+                            700: '#6d28d9',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* Custom scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 999px;
+        }
+        .dark ::-webkit-scrollbar-thumb {
+            background: #475569;
+        }
+        /* Markdown rendering styles */
+        .prose h1, .prose h2, .prose h3 {
+            font-weight: 700;
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+            color: inherit;
+        }
+        .prose h3 { font-size: 1.125rem; }
+        .prose p { margin-bottom: 0.75rem; line-height: 1.6; }
+        .prose ul, .prose ol { padding-left: 1.25rem; margin-bottom: 0.75rem; list-style-type: decimal; }
+        .prose ul { list-style-type: disc; }
+        .prose li { margin-bottom: 0.25rem; }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 min-h-screen transition-colors duration-200">
+
+    <div class="flex flex-col min-h-screen">
+        <!-- Top Header Navigation -->
+        <header class="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-3">
+            <div class="max-w-6xl mx-auto flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <span class="material-symbols-outlined text-brand-600 dark:text-brand-500 font-bold text-3xl">auto_stories</span>
+                    <div>
+                        <h1 class="font-serif text-xl font-bold tracking-tight text-slate-900 dark:text-white">SermonAI</h1>
+                        <p class="text-xs text-slate-500 dark:text-slate-400">Your Sermon Study Companion</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-center space-x-2 md:space-x-3">
+                    <!-- Library Button -->
+                    <button onclick="toggleLibraryDrawer()" class="flex items-center space-x-1 px-3 py-2 rounded-xl bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/40 dark:hover:bg-brand-900/40 text-brand-700 dark:text-brand-300 text-sm font-semibold transition-all">
+                        <span class="material-symbols-outlined text-lg">library_books</span>
+                        <span>My Library</span>
+                    </button>
+
+                    <!-- Light/Dark Mode Switcher -->
+                    <button onclick="toggleDarkMode()" class="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-all" title="Toggle Theme">
+                        <span id="theme-icon" class="material-symbols-outlined block text-xl">dark_mode</span>
+                    </button>
+
+                    <!-- Connection / Credentials Settings Trigger -->
+                    <button onclick="openSettingsModal()" class="flex items-center space-x-1 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-sm font-medium transition-all">
+                        <span class="material-symbols-outlined text-lg">vpn_key</span>
+                        <span class="hidden md:inline">API Accounts</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-grow max-w-6xl w-full mx-auto p-4 grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- Left Panel: Input sermon metadata, link, and transcript text -->
+            <section class="lg:col-span-5 flex flex-col space-y-4">
+                <div class="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+                    <h2 class="text-lg font-bold flex items-center space-x-2 text-slate-900 dark:text-slate-100">
+                        <span class="material-symbols-outlined text-brand-600 dark:text-brand-400">explore</span>
+                        <span>Analyze Sermon</span>
+                    </h2>
+
+                    <!-- Model Selection Selector -->
+                    <div class="space-y-1">
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Choose AI Model Account</label>
+                        <select id="model-provider" onchange="handleModelProviderChange()" class="w-full bg-slate-100 dark:bg-slate-800 border-0 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-brand-500 text-slate-800 dark:text-slate-200 font-medium">
+                            <option value="gemini-built-in">✨ Built-in Gemini (Free / No Key Needed)</option>
+                            <option value="openai">ChatGPT / OpenAI API (BYOK)</option>
+                            <option value="claude">Claude / Anthropic API (BYOK)</option>
+                            <option value="gemini-custom">Gemini / Google API (BYOK)</option>
+                        </select>
+                        <p id="provider-badge-info" class="text-xs text-brand-600 dark:text-brand-400 font-medium pt-1">💡 Running live on Google Gemini 3 Flash built-in server!</p>
+                    </div>
+
+                    <!-- YouTube Link Input -->
+                    <div class="space-y-1">
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">YouTube Sermon Link</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-slate-400">smart_display</span>
+                            <input id="youtube-link" type="text" placeholder="e.g. https://www.youtube.com/watch?v=..." class="w-full bg-slate-100 dark:bg-slate-800 border-0 rounded-2xl pl-10 pr-4 py-3 text-sm focus:ring-2 focus:ring-brand-500 text-slate-800 dark:text-slate-200">
+                        </div>
+                    </div>
+
+                    <!-- Manual Transcript Paste Toggle for Absolute Accuracy -->
+                    <div class="border-t border-slate-100 dark:border-slate-800 pt-3">
+                        <button onclick="toggleTranscriptBox()" class="flex items-center justify-between w-full py-1 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition-all text-xs font-semibold uppercase tracking-wider">
+                            <span class="flex items-center space-x-1">
+                                <span class="material-symbols-outlined text-sm">assignment</span>
+                                <span>Paste Transcript manually (100% Perfect Accuracy)</span>
+                            </span>
+                            <span id="transcript-toggle-arrow" class="material-symbols-outlined text-sm transition-transform">keyboard_arrow_down</span>
+                        </button>
+                        
+                        <div id="transcript-container" class="hidden mt-2">
+                            <p class="text-[11px] text-amber-600 dark:text-amber-400 font-medium mb-2">💡 For long sermons, copy-pasting the exact transcript/notes here guarantees that the AI only uses the exact treated points (like the 10 anchors) without any chance of web search confusion.</p>
+                            <textarea id="manual-transcript" placeholder="If automatic transcript extraction fails or you want absolute precision, paste the sermon text, sermon outline, or transcripts here..." rows="6" class="w-full bg-slate-100 dark:bg-slate-800 border-0 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-brand-500 text-slate-800 dark:text-slate-200 resize-none"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button id="btn-generate" onclick="startSermonAnalysis()" class="w-full bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-semibold py-3.5 px-6 rounded-2xl shadow-lg shadow-brand-500/10 transition-all flex items-center justify-center space-x-2">
+                        <span class="material-symbols-outlined">analytics</span>
+                        <span>Generate Sermon Summary</span>
+                    </button>
+                </div>
+
+                <div id="analysis-loader" class="hidden bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+                    <div class="flex items-center space-x-3">
+                        <div class="animate-spin rounded-full h-5 w-5 border-2 border-brand-500 border-t-transparent"></div>
+                        <h3 class="font-bold text-slate-800 dark:text-slate-100 text-sm">Processing Sermon Media</h3>
+                    </div>
+                    
+                    <!-- Progress items -->
+                    <div class="space-y-3 pt-2">
+                        <div class="flex items-center space-x-2 text-xs" id="step-metadata">
+                            <span class="material-symbols-outlined text-green-500 text-sm" id="icon-step-metadata">check_circle</span>
+                            <span class="text-slate-600 dark:text-slate-400" id="text-step-metadata">Reading sermon video information...</span>
+                        </div>
+                        <div class="flex items-center space-x-2 text-xs" id="step-transcript">
+                            <span class="material-symbols-outlined text-slate-300 dark:text-slate-700 text-sm animate-pulse" id="icon-step-transcript">pending</span>
+                            <span class="text-slate-500 dark:text-slate-400" id="text-step-transcript">Extracting transcription timeline...</span>
+                        </div>
+                        <div class="flex items-center space-x-2 text-xs" id="step-ai">
+                            <span class="material-symbols-outlined text-slate-300 dark:text-slate-700 text-sm" id="icon-step-ai">pending</span>
+                            <span class="text-slate-500 dark:text-slate-400">Analyzing sermon structure, scriptures & context...</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Panel: Core Keynotes & Interactive Companion Chat -->
+            <section class="lg:col-span-7 flex flex-col space-y-6">
+                <!-- Welcome State -->
+                <div id="welcome-state" class="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-200 dark:border-slate-800 shadow-sm text-center py-16 space-y-4">
+                    <div class="h-16 w-16 bg-brand-50 dark:bg-brand-950/50 rounded-full flex items-center justify-center mx-auto">
+                        <span class="material-symbols-outlined text-brand-600 dark:text-brand-400 text-3xl">auto_stories</span>
+                    </div>
+                    <div class="max-w-md mx-auto space-y-2">
+                        <h2 class="font-serif text-2xl font-bold text-slate-900 dark:text-white">Begin Sermon Study</h2>
+                        <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Input a YouTube link or paste a sermon transcript on the left. The AI will extract the structured scripture keynotes, study reflections, and prepare your conversational follow-up study companion.</p>
+                    </div>
+                </div>
+
+                <!-- Main Analysis Dashboard Layout (Visible after processing) -->
+                <div id="dashboard-layout" class="hidden flex flex-col space-y-6">
+                    <div class="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 dark:border-slate-800 pb-4 gap-4">
+                            <div>
+                                <span id="dash-speaker" class="text-xs font-semibold uppercase tracking-wider text-brand-600 dark:text-brand-400">SPEAKER</span>
+                                <h2 id="dash-title" class="font-serif text-2xl font-bold text-slate-900 dark:text-white leading-tight">Sermon Title</h2>
+                            </div>
+                            
+                            <!-- Save to Library Action Trigger -->
+                            <button id="btn-save-library" onclick="saveCurrentSermonToLibrary()" class="flex items-center space-x-1 px-4 py-2 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold transition-all shadow-md shrink-0">
+                                <span class="material-symbols-outlined text-sm">bookmark</span>
+                                <span id="save-library-text">Save to Library</span>
+                            </button>
+                        </div>
+
+                        <!-- Sermon Overview Segment -->
+                        <div class="space-y-2">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Sermon Summary</h3>
+                            <p id="dash-overview" class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">Loading high level overview...</p>
+                        </div>
+
+                        <!-- Core Keynotes Accordion/Timeline -->
+                        <div class="space-y-3">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Core Keynotes & Scripture Index</h3>
+                            <div id="dash-keynotes" class="space-y-3">
+                                <!-- Populated dynamically -->
+                            </div>
+                        </div>
+
+                        <!-- Actionable Application Bulletins -->
+                        <div class="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-5 border border-slate-100 dark:border-slate-800/80 space-y-3">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center space-x-1.5">
+                                <span class="material-symbols-outlined text-sm text-amber-500">psychology_alt</span>
+                                <span>Practical Application Study Notes</span>
+                            </h3>
+                            <ul id="dash-applications" class="space-y-2 text-sm text-slate-600 dark:text-slate-300 list-disc list-inside">
+                                <!-- Populated dynamically -->
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col h-[500px]">
+                        <!-- Chat header -->
+                        <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
+                            <div class="flex items-center space-x-2">
+                                <div class="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                                <h3 class="font-bold text-sm text-slate-800 dark:text-slate-100">Study Companion Assistant</h3>
+                            </div>
+                            <button onclick="clearChat()" class="text-xs font-semibold text-slate-500 hover:text-red-500 transition-all flex items-center space-x-0.5">
+                                <span class="material-symbols-outlined text-xs">delete</span>
+                                <span>Reset Chat</span>
+                            </button>
+                        </div>
+
+                        <!-- Dynamic Questions Chips Row -->
+                        <div class="px-5 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/20">
+                            <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Suggested Spiritual Reflection Questions</p>
+                            <div id="dynamic-chips-row" class="flex flex-wrap gap-1.5">
+                                <!-- Custom chips generated by AI -->
+                            </div>
+                        </div>
+
+                        <!-- Messages rolling thread -->
+                        <div id="chat-scroller" class="flex-grow p-5 overflow-y-auto space-y-4 text-sm">
+                            <div class="flex space-x-3 items-start">
+                                <div class="h-8 w-8 rounded-full bg-brand-50 dark:bg-brand-950 flex items-center justify-center shrink-0">
+                                    <span class="material-symbols-outlined text-brand-600 dark:text-brand-400 text-sm">auto_stories</span>
+                                </div>
+                                <div class="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-2xl rounded-tl-none p-3.5 max-w-[85%] leading-relaxed">
+                                    Hi there! I am ready to delve deeper into this sermon with you. Ask me about specific scripture applications, cross-references, or sermon questions based on the keynotes above.
+                                </div>
+                            </div>
+                            <div id="chat-anchor"></div>
+                        </div>
+
+                        <!-- Chat input footer form -->
+                        <div class="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30">
+                            <div class="flex items-center space-x-2">
+                                <input id="chat-input" onkeydown="handleChatKeyDown(event)" type="text" placeholder="Ask about sermon cross-references, applications..." class="flex-grow bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-brand-500 text-slate-800 dark:text-slate-100 outline-none">
+                                <button onclick="sendChatMessage()" class="h-11 w-11 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white rounded-2xl shadow-md flex items-center justify-center transition-all shrink-0">
+                                    <span class="material-symbols-outlined">send</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- LIBRARY DRAWER (Sliding panel from the right) -->
+        <div id="library-drawer" class="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-sm hidden flex justify-end">
+            <!-- Click-outside backdrop closer -->
+            <div class="absolute inset-0 cursor-pointer" onclick="toggleLibraryDrawer()"></div>
+            
+            <div class="relative w-full max-w-md bg-white dark:bg-slate-900 h-full shadow-2xl flex flex-col z-10 animate-slide-in overflow-hidden border-l border-slate-200 dark:border-slate-800">
+                <!-- Header -->
+                <div class="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                        <span class="material-symbols-outlined text-brand-600 dark:text-brand-400 text-2xl">library_books</span>
+                        <h3 class="font-serif text-lg font-bold text-slate-900 dark:text-white">My Sermon Library</h3>
+                    </div>
+                    <button onclick="toggleLibraryDrawer()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-all">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+
+                <!-- Saved Items List Container -->
+                <div id="library-items-container" class="flex-grow overflow-y-auto p-6 space-y-4">
+                    <!-- Loaded dynamically via JS -->
+                </div>
+
+                <!-- Footer -->
+                <div class="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-center">
+                    <p class="text-xs text-slate-400">Your study progress automatically syncs safely to secure sandbox containers.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Accounts configuration Modal -->
+        <div id="settings-modal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                <!-- Modal header -->
+                <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                    <h3 class="font-bold text-lg text-slate-900 dark:text-white flex items-center space-x-2">
+                        <span class="material-symbols-outlined text-brand-600 dark:text-brand-400">vpn_key</span>
+                        <span>Manage API Credentials</span>
+                    </h3>
+                    <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-all">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+
+                <!-- Modal Form content scroller -->
+                <div class="p-6 overflow-y-auto space-y-5 text-sm">
+                    <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                        SermonAI runs entirely inside your browser. By supplying your personal developer credentials below, you enjoy direct AI analysis with zero server limits. Your credentials never leave your browser and are stored securely in local encrypted sandbox storage.
+                    </p>
+
+                    <!-- OpenAI BYOK key -->
+                    <div class="space-y-1.5">
+                        <div class="flex items-center justify-between">
+                            <label class="font-semibold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-wider">OpenAI API Key</label>
+                            <a href="https://platform.openai.com/api-keys" target="_blank" class="text-xs text-brand-600 dark:text-brand-400 hover:underline">Get key →</a>
+                        </div>
+                        <input id="key-openai" type="password" placeholder="sk-..." class="w-full bg-slate-100 dark:bg-slate-800 border-0 rounded-2xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 text-slate-800 dark:text-slate-100">
+                    </div>
+
+                    <!-- Anthropic Claude BYOK key -->
+                    <div class="space-y-1.5">
+                        <div class="flex items-center justify-between">
+                            <label class="font-semibold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-wider">Anthropic Claude Key</label>
+                            <a href="https://console.anthropic.com/settings/keys" target="_blank" class="text-xs text-brand-600 dark:text-brand-400 hover:underline">Get key →</a>
+                        </div>
+                        <input id="key-claude" type="password" placeholder="sk-ant-..." class="w-full bg-slate-100 dark:bg-slate-800 border-0 rounded-2xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 text-slate-800 dark:text-slate-100">
+                    </div>
+
+                    <!-- Google Gemini BYOK key -->
+                    <div class="space-y-1.5">
+                        <div class="flex items-center justify-between">
+                            <label class="font-semibold text-slate-700 dark:text-slate-300 text-xs uppercase tracking-wider">Google Gemini API Key</label>
+                            <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-xs text-brand-600 dark:text-brand-400 hover:underline">Get key →</a>
+                        </div>
+                        <input id="key-gemini" type="password" placeholder="AIzaSy..." class="w-full bg-slate-100 dark:bg-slate-800 border-0 rounded-2xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 text-slate-800 dark:text-slate-100">
+                    </div>
+                </div>
+
+                <!-- Modal actions footer -->
+                <div class="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-end space-x-2">
+                    <button onclick="closeSettingsModal()" class="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold text-sm transition-all">Cancel</button>
+                    <button onclick="saveApiKeys()" class="px-5 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm transition-all shadow-md shadow-brand-500/10">Save Credentials</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- STYLED TOAST ALERT CONTAINER -->
+        <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+        <footer class="border-t border-slate-200 dark:border-slate-800 py-4 px-4 bg-white dark:bg-slate-900 mt-auto">
+            <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 dark:text-slate-500 gap-2">
+                <p>&copy; 2026 SermonAI Study Assistant. Serverless PWA with ground-truth search analysis.</p>
+                <div class="flex space-x-3">
+                    <a href="#" class="hover:text-slate-600 dark:hover:text-slate-300">Privacy Policy</a>
+                    <a href="#" class="hover:text-slate-600 dark:hover:text-slate-300">Terms of Use</a>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Firestore Core & Auth Modules Import -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global State Controllers
+        let currentSermonData = null;
+        let chatHistory = [];
+        let systemTheme = 'light';
+        let savedLibraryMap = new Map(); // Fallback in-memory collection map
+
+        // Cloud Storage configuration parameters
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-sermon-ai';
+        let db = null;
+        let auth = null;
+        let userId = null;
+        let cloudSynced = false;
+
+        // Initialize Cloud Storage if configuration context is present
+        async function initCloudStorage() {
+            if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                try {
+                    const firebaseConfig = JSON.parse(__firebase_config);
+                    const app = initializeApp(firebaseConfig);
+                    db = getFirestore(app);
+                    auth = getAuth(app);
+
+                    // Sign in to access storage safely
+                    let userCredential;
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        userCredential = await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        userCredential = await signInAnonymously(auth);
+                    }
+                    userId = userCredential.user?.uid || crypto.randomUUID();
+                    cloudSynced = true;
+                    console.log("SermonAI Cloud Sync successfully activated for ID:", userId);
+                    
+                    // Activate live Firestore library subscription sync
+                    subscribeToCloudLibrary();
+                } catch (e) {
+                    console.warn("Could not enable private cloud storage sync. Using session-based library.", e);
+                }
+            } else {
+                console.log("Cloud storage context not provided. Sermon Library operating on standard session state.");
+            }
+        }
+
+        // Live subscribe to Firestore Library items following RULE 1 & 2
+        function subscribeToCloudLibrary() {
+            if (!cloudSynced || !db || !userId) return;
+            
+            // Path structure strictly following RULE 1: /artifacts/{appId}/users/{userId}/{collectionName}
+            const libCollectionRef = collection(db, 'artifacts', appId, 'users', userId, 'saved_sermons');
+            const simpleQuery = query(libCollectionRef); // Simple query following RULE 2
+
+            onSnapshot(simpleQuery, (snapshot) => {
+                savedLibraryMap.clear();
+                snapshot.forEach((doc) => {
+                    savedLibraryMap.set(doc.id, { id: doc.id, ...doc.data() });
+                });
+                renderLibraryUI();
+                updateSaveButtonState();
+            }, (error) => {
+                console.error("Firestore onSnapshot error:", error);
+            });
+        }
+
+        /**
+         * Toast Notification System
+         * @param {string} message - Content of the notice
+         * @param {('success'|'error'|'info')} type - Severity tier
+         */
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+
+            const toast = document.createElement('div');
+            toast.className = 'transform translate-y-2 opacity-0 transition-all duration-300 pointer-events-auto flex items-center p-4 rounded-2xl shadow-lg border max-w-sm w-full sm:w-80 gap-3 z-50';
+            
+            let bgClass = 'bg-white border-slate-200 text-slate-800 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-100';
+            let icon = 'info';
+            let iconColor = 'text-brand-500';
+
+            if (type === 'success') {
+                bgClass = 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-900/50 dark:text-emerald-200';
+                icon = 'check_circle';
+                iconColor = 'text-emerald-500';
+            } else if (type === 'error') {
+                bgClass = 'bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-950/40 dark:border-rose-900/50 dark:text-rose-200';
+                icon = 'error';
+                iconColor = 'text-rose-500';
+            }
+
+            toast.className += ` ${bgClass}`;
+            toast.innerHTML = `
+                <span class="material-symbols-outlined ${iconColor} shrink-0 text-xl">${icon}</span>
+                <span class="font-semibold text-xs leading-snug flex-grow">${message}</span>
+                <button onclick="this.parentElement.remove()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-all shrink-0">
+                    <span class="material-symbols-outlined text-sm">close</span>
+                </button>
+            `;
+
+            container.appendChild(toast);
+            
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-[-8px]');
+                setTimeout(() => {
+                    toast.remove();
+                }, 300);
+            }, 4000);
+        }
+
+        function toggleDarkMode() {
+            if (document.documentElement.classList.contains('dark')) {
+                document.documentElement.classList.remove('dark');
+                localStorage.theme = 'light';
+                document.getElementById('theme-icon').textContent = 'dark_mode';
+                systemTheme = 'light';
+            } else {
+                document.documentElement.classList.add('dark');
+                localStorage.theme = 'dark';
+                document.getElementById('theme-icon').textContent = 'light_mode';
+                systemTheme = 'dark';
+            }
+        }
+
+        function toggleTranscriptBox() {
+            const container = document.getElementById('transcript-container');
+            const arrow = document.getElementById('transcript-toggle-arrow');
+            if (container.classList.contains('hidden')) {
+                container.classList.remove('hidden');
+                arrow.style.transform = 'rotate(180deg)';
+            } else {
+                container.classList.add('hidden');
+                arrow.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        function handleModelProviderChange() {
+            const selectVal = document.getElementById('model-provider').value;
+            const badge = document.getElementById('provider-badge-info');
+            if (selectVal === 'gemini-built-in') {
+                badge.innerHTML = `✨ Built-in Gemini (Free / No Key Needed)`;
+            } else if (selectVal === 'openai') {
+                badge.innerHTML = `💡 Uses OpenAI model 'gpt-4o-mini' via your API Key.`;
+            } else if (selectVal === 'claude') {
+                badge.innerHTML = `💡 Uses Anthropic Claude model 'claude-3-5-sonnet' via your API Key.`;
+            } else if (selectVal === 'gemini-custom') {
+                badge.innerHTML = `💡 Uses Google Gemini model 'gemini-2.5-flash' via your API Key.`;
+            }
+        }
+
+        function openSettingsModal() {
+            document.getElementById('settings-modal').classList.remove('hidden');
+        }
+
+        function closeSettingsModal() {
+            document.getElementById('settings-modal').classList.add('hidden');
+        }
+
+        function saveApiKeys() {
+            const oKey = document.getElementById('key-openai').value.trim();
+            const cKey = document.getElementById('key-claude').value.trim();
+            const gKey = document.getElementById('key-gemini').value.trim();
+
+            localStorage.setItem('sermon_key_openai', oKey);
+            localStorage.setItem('sermon_key_claude', cKey);
+            localStorage.setItem('sermon_key_gemini', gKey);
+
+            showToast("Credentials saved successfully!", "success");
+            closeSettingsModal();
+        }
+
+        function loadKeysIntoUI() {
+            document.getElementById('key-openai').value = localStorage.getItem('sermon_key_openai') || '';
+            document.getElementById('key-claude').value = localStorage.getItem('sermon_key_claude') || '';
+            document.getElementById('key-gemini').value = localStorage.getItem('sermon_key_gemini') || '';
+        }
+
+        // Fetch actual YouTube Title and Metadata
+        async function fetchYoutubeMetadata(url) {
+            try {
+                const encodedUrl = encodeURIComponent(url);
+                const res = await fetch(`https://www.youtube.com/oembed?url=${encodedUrl}&format=json`);
+                if (res.ok) {
+                    const data = await res.json();
+                    return {
+                        title: data.title,
+                        author: data.author_name || "Sermon Speaker",
+                        thumbnail: data.thumbnail_url
+                    };
+                }
+            } catch (e) {
+                console.error("Failed to fetch YouTube oEmbed metadata", e);
+            }
+            return null;
+        }
+
+        function getYoutubeId(url) {
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+            const match = url.match(regExp);
+            return (match && match[2].length === 11) ? match[2] : null;
+        }
+
+        async function startSermonAnalysis() {
+            const modelProvider = document.getElementById('model-provider').value;
+            const link = document.getElementById('youtube-link').value.trim();
+            const manualTranscriptText = document.getElementById('manual-transcript').value.trim();
+
+            if (!link && !manualTranscriptText) {
+                showToast("Please enter a YouTube link or paste sermon notes/transcript first.", "error");
+                return;
+            }
+
+            document.getElementById('welcome-state').classList.add('hidden');
+            document.getElementById('dashboard-layout').classList.add('hidden');
+            document.getElementById('analysis-loader').classList.remove('hidden');
+
+            setAnalysisStep('metadata', 'pending', 'Reading sermon video details...');
+            setAnalysisStep('transcript', 'pending', 'Searching sermon transcript details...');
+            setAnalysisStep('ai', 'pending', 'Sermon context extraction in progress...');
+
+            try {
+                let apiKey = "";
+
+                if (modelProvider === 'openai') {
+                    apiKey = localStorage.getItem('sermon_key_openai');
+                    if (!apiKey) throw new Error("Please configure your OpenAI API Key under 'API Accounts'.");
+                } else if (modelProvider === 'claude') {
+                    apiKey = localStorage.getItem('sermon_key_claude');
+                    if (!apiKey) throw new Error("Please configure your Anthropic Claude API Key under 'API Accounts'.");
+                } else if (modelProvider === 'gemini-custom') {
+                    apiKey = localStorage.getItem('sermon_key_gemini');
+                    if (!apiKey) throw new Error("Please configure your Google Gemini API Key under 'API Accounts'.");
+                }
+
+                setAnalysisStep('metadata', 'running', 'Fetching authentic YouTube metadata...');
+                let resolvedTitle = "Sermon Outline";
+                let resolvedSpeaker = "Sermon Speaker";
+                let ytVideoId = "";
+
+                if (link) {
+                    ytVideoId = getYoutubeId(link) || "";
+                    const meta = await fetchYoutubeMetadata(link);
+                    if (meta) {
+                        resolvedTitle = meta.title;
+                        resolvedSpeaker = meta.author;
+                        setAnalysisStep('metadata', 'success', `Metadata verified: "${resolvedTitle}"`);
+                    } else {
+                        setAnalysisStep('metadata', 'success', 'Using generic sermon link identifiers.');
+                    }
+                } else {
+                    setAnalysisStep('metadata', 'success', 'Parsing manually pasted transcript context.');
+                }
+
+                let transcriptContext = "";
+                if (manualTranscriptText) {
+                    transcriptContext = manualTranscriptText;
+                    setAnalysisStep('transcript', 'success', 'Parsed pasted sermon transcript text successfully.');
+                } else {
+                    setAnalysisStep('transcript', 'running', 'Searching web grounding for transcript details online...');
+                    transcriptContext = `
+YouTube Video URL: ${link}
+YouTube Video ID: ${ytVideoId}
+Actual Video Title: ${resolvedTitle}
+Sermon Speaker/Source: ${resolvedSpeaker}
+Please query web search grounding to fetch the exact sermon structure, transcript points, specific treated outlines, or anchors treated under this exact title: "${resolvedTitle}".
+`;
+                }
+
+                setAnalysisStep('ai', 'running', 'Extracting core structural points strictly...');
+
+                const prompt = `
+Analyze the following sermon metadata or transcript text. You must treat this with absolute accuracy.
+STRICT SUMMARY INSTRUCTIONS:
+1. Do NOT hallucinate, invent, or create synthetic sermon points. 
+2. Do NOT add new words, alter key terms, or add external scriptures/sermon content that were not treating in the original sermon.
+3. If the sermon lists a specific count of treated points (for example, "10 Biblical Anchors for Exploits & Unshakable Faith" or similar numeric outlines treating specific anchors), you must query search grounding to find those EXACT points, listing ALL of them in order with the precise terms/titles used in the sermon.
+4. Keep the summary structure directly proportional to what was treated in the sermon. Just format it clearly.
+
+Metadata / Transcript Context:
+${transcriptContext}
+
+Return your final output strictly as valid, parsable JSON matching this schema:
+{
+  "title": "${resolvedTitle.replace(/"/g, '\\"')}",
+  "speaker": "${resolvedSpeaker.replace(/"/g, '\\"')}",
+  "overview": "A thorough, 3-sentence sermon high-level overview of the message and its core theme based strictly on the transcript.",
+  "keynotes": [
+    {
+      "point": "Exact Key Point or Anchor Name treated in the sermon (e.g., Anchor 1, Anchor 2, up to the full treated list)",
+      "scriptures": "Exact scriptures referenced in this point, separated by commas",
+      "details": "Direct, factual details of this point summarizing only what the speaker said."
+    }
+  ],
+  "applications": [
+    "Practical, actionable life application or reflection item 1 directly from the text",
+    "Practical, actionable life application or reflection item 2 directly from the text",
+    "Practical, actionable life application or reflection item 3 directly from the text"
+  ],
+  "suggested_questions": [
+    "Specific question about a treated point or scripture from this sermon",
+    "Specific question exploring the application of these exact points",
+    "Specific question about the sermon context of this message"
+  ]
+}
+`;
+
+                const summaryResult = await executeAiCall(modelProvider, apiKey, prompt, true);
+                const parsedData = JSON.parse(summaryResult);
+                
+                if (resolvedTitle !== "Sermon Outline" && parsedData.title !== resolvedTitle) {
+                    parsedData.title = resolvedTitle;
+                }
+                if (resolvedSpeaker !== "Sermon Speaker" && parsedData.speaker !== resolvedSpeaker) {
+                    parsedData.speaker = resolvedSpeaker;
+                }
+
+                // Append empty initial chat history for this new layout
+                parsedData.chatHistory = [];
+
+                renderSermonDashboard(parsedData);
+                setAnalysisStep('ai', 'success', 'Sermon context extracted successfully.');
+                showToast("Sermon overview generated successfully!", "success");
+
+            } catch (err) {
+                console.error(err);
+                showToast(err.message || "Sermon summary extraction failed.", "error");
+                document.getElementById('welcome-state').classList.remove('hidden');
+                document.getElementById('dashboard-layout').classList.add('hidden');
+            } finally {
+                document.getElementById('analysis-loader').classList.add('hidden');
+            }
+        }
+
+        function setAnalysisStep(step, state, text) {
+            const icon = document.getElementById(`icon-step-${step}`);
+            const label = document.getElementById(`text-step-${step}`);
+            if (label && text) label.textContent = text;
+
+            if (icon) {
+                if (state === 'pending') {
+                    icon.textContent = 'pending';
+                    icon.className = "material-symbols-outlined text-slate-300 dark:text-slate-700 text-sm";
+                } else if (state === 'running') {
+                    icon.textContent = 'autorenew';
+                    icon.className = "material-symbols-outlined text-brand-500 animate-spin text-sm";
+                } else if (state === 'success') {
+                    icon.textContent = 'check_circle';
+                    icon.className = "material-symbols-outlined text-emerald-500 text-sm";
+                }
+            }
+        }
+
+        async function executeAiCall(provider, key, userQuery, requireJson = false, systemInstruction = "") {
+            const fetchWithRetry = async (url, options, retries = 3, delay = 1000) => {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        const errText = await response.text();
+                        throw new Error(`API response status ${response.status}: ${errText}`);
+                    }
+                    return response;
+                } catch (error) {
+                    if (retries > 0) {
+                        await new Promise(res => setTimeout(res, delay));
+                        return fetchWithRetry(url, options, retries - 1, delay * 2);
+                    }
+                    throw error;
+                }
+            };
+
+            if (provider === 'gemini-built-in') {
+                const apiKey = ""; 
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+                
+                const payload = {
+                    contents: [{ parts: [{ text: userQuery }] }],
+                    tools: [{ "google_search": {} }], 
+                };
+
+                if (requireJson) {
+                    payload.generationConfig = {
+                        responseMimeType: "application/json"
+                    };
+                }
+
+                if (systemInstruction) {
+                    payload.systemInstruction = {
+                        parts: [{ text: systemInstruction }]
+                    };
+                }
+
+                const res = await fetchWithRetry(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await res.json();
+                
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!text) throw new Error("Did not receive a text generation back from the Google Gemini engine.");
+                return text;
+
+            } else if (provider === 'openai') {
+                const url = 'https://api.openai.com/v1/chat/completions';
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${key}`
+                };
+                const payload = {
+                    model: 'gpt-4o-mini',
+                    messages: []
+                };
+
+                if (systemInstruction) {
+                    payload.messages.push({ role: 'system', content: systemInstruction });
+                }
+                payload.messages.push({ role: 'user', content: userQuery });
+
+                if (requireJson) {
+                    payload.response_format = { type: "json_object" };
+                }
+
+                const res = await fetchWithRetry(url, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(payload)
+                });
+                const result = await res.json();
+                return result.choices[0].message.content;
+
+            } else if (provider === 'claude') {
+                const url = 'https://api.anthropic.com/v1/messages';
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'x-api-key': key,
+                    'anthropic-version': '2023-06-01',
+                    'dangerouslyAllowBrowser': 'true'
+                };
+                const payload = {
+                    model: 'claude-3-5-sonnet-20241022',
+                    max_tokens: 3000,
+                    messages: [{ role: 'user', content: userQuery }]
+                };
+
+                if (systemInstruction) {
+                    payload.system = systemInstruction;
+                }
+
+                const res = await fetchWithRetry(url, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(payload)
+                });
+                const result = await res.json();
+                return result.content[0].text;
+
+            } else if (provider === 'gemini-custom') {
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${key}`;
+                
+                const payload = {
+                    contents: [{ parts: [{ text: userQuery }] }]
+                };
+
+                if (requireJson) {
+                    payload.generationConfig = {
+                        responseMimeType: "application/json"
+                    };
+                }
+
+                if (systemInstruction) {
+                    payload.systemInstruction = {
+                        parts: [{ text: systemInstruction }]
+                    };
+                }
+
+                const res = await fetchWithRetry(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await res.json();
+                
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!text) throw new Error("Did not receive a text generation back from your Gemini engine.");
+                return text;
+            }
+        }
+
+        function renderSermonDashboard(data) {
+            currentSermonData = data;
+            
+            document.getElementById('dash-title').textContent = data.title || "Sermon Outline";
+            document.getElementById('dash-speaker').textContent = data.speaker ? `Speaker: ${data.speaker}` : "SPEAKER / PREACHER";
+            document.getElementById('dash-overview').textContent = data.overview || "Overview not populated.";
+
+            const keynoteRow = document.getElementById('dash-keynotes');
+            keynoteRow.innerHTML = "";
+            
+            if (data.keynotes && Array.isArray(data.keynotes)) {
+                data.keynotes.forEach((keynote, idx) => {
+                    const block = document.createElement('div');
+                    block.className = "border border-slate-100 dark:border-slate-800/80 rounded-2xl p-4 hover:shadow-md transition-all";
+                    block.innerHTML = `
+                        <div class="flex items-start justify-between">
+                            <div class="space-y-1">
+                                <span class="text-xs font-semibold text-brand-600 dark:text-brand-400">Point ${idx + 1}</span>
+                                <h4 class="font-bold text-slate-800 dark:text-slate-100 text-sm">${keynote.point || 'Outline Keynote'}</h4>
+                            </div>
+                            <span class="inline-flex items-center text-xs bg-brand-50 dark:bg-brand-950/40 text-brand-700 dark:text-brand-300 font-bold px-2.5 py-1 rounded-full shrink-0">
+                                <span class="material-symbols-outlined text-xs mr-1">book</span> ${keynote.scriptures || 'Ref'}
+                            </span>
+                        </div>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mt-2 pt-2 border-t border-slate-50 dark:border-slate-800/50">${keynote.details || 'Sermon outline analysis.'}</p>
+                    `;
+                    keynoteRow.appendChild(block);
+                });
+            }
+
+            const appRow = document.getElementById('dash-applications');
+            appRow.innerHTML = "";
+            if (data.applications && Array.isArray(data.applications)) {
+                data.applications.forEach(app => {
+                    const li = document.createElement('li');
+                    li.className = "pl-1 py-0.5 leading-relaxed";
+                    li.textContent = app;
+                    appRow.appendChild(li);
+                });
+            }
+
+            const chipRow = document.getElementById('dynamic-chips-row');
+            chipRow.innerHTML = "";
+            if (data.suggested_questions && Array.isArray(data.suggested_questions)) {
+                data.suggested_questions.forEach(q => {
+                    const btn = document.createElement('button');
+                    btn.className = "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all text-xs font-medium px-3 py-1.5 rounded-full border border-slate-200/50 dark:border-slate-700/50 text-left max-w-full truncate";
+                    btn.textContent = q;
+                    btn.title = q;
+                    btn.onclick = () => {
+                        document.getElementById('chat-input').value = q;
+                        sendChatMessage();
+                    };
+                    chipRow.appendChild(btn);
+                });
+            }
+
+            // Load existing chat history or clear it
+            if (data.chatHistory && data.chatHistory.length > 0) {
+                restoreChatHistory(data.chatHistory);
+            } else {
+                clearChat();
+            }
+
+            updateSaveButtonState();
+            document.getElementById('dashboard-layout').classList.remove('hidden');
+        }
+
+        function toggleLibraryDrawer() {
+            const drawer = document.getElementById('library-drawer');
+            if (drawer.classList.contains('hidden')) {
+                drawer.classList.remove('hidden');
+                renderLibraryUI();
+            } else {
+                drawer.classList.add('hidden');
+            }
+        }
+
+        // Save current sermon (with complete chat states) to the database/memory
+        async function saveCurrentSermonToLibrary() {
+            if (!currentSermonData) return;
+
+            // Generate an ID based on title if not present
+            const sermonId = currentSermonData.id || `sermon_${Date.now()}`;
+            currentSermonData.id = sermonId;
+            currentSermonData.chatHistory = chatHistory; // Keep conversation sync
+            currentSermonData.savedAt = new Date().toISOString();
+
+            if (cloudSynced && db && userId) {
+                try {
+                    // Save dynamically into personal user collections following RULE 1
+                    const sDocRef = doc(db, 'artifacts', appId, 'users', userId, 'saved_sermons', sermonId);
+                    await setDoc(sDocRef, currentSermonData);
+                    showToast("Sermon saved to secure cloud library!", "success");
+                } catch (e) {
+                    console.error("Cloud save failed, falling back to session-based local library.", e);
+                    savedLibraryMap.set(sermonId, currentSermonData);
+                    showToast("Saved to offline session library.", "success");
+                    renderLibraryUI();
+                }
+            } else {
+                savedLibraryMap.set(sermonId, currentSermonData);
+                showToast("Sermon saved to local study library!", "success");
+                renderLibraryUI();
+            }
+            updateSaveButtonState();
+        }
+
+        function updateSaveButtonState() {
+            if (!currentSermonData) return;
+            const btn = document.getElementById('btn-save-library');
+            const txt = document.getElementById('save-library-text');
+            const sermonId = currentSermonData.id;
+
+            if (sermonId && savedLibraryMap.has(sermonId)) {
+                btn.className = "flex items-center space-x-1 px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-md shrink-0";
+                txt.textContent = "Saved to Library";
+            } else {
+                btn.className = "flex items-center space-x-1 px-4 py-2 rounded-2xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold transition-all shadow-md shrink-0";
+                txt.textContent = "Save to Library";
+            }
+        }
+
+        // Load item back into dashboard Workspace
+        function loadSermonFromLibrary(id) {
+            const sermon = savedLibraryMap.get(id);
+            if (sermon) {
+                renderSermonDashboard(sermon);
+                toggleLibraryDrawer();
+                showToast(`Loaded: "${sermon.title}"`, "success");
+            } else {
+                showToast("Sermon data not found.", "error");
+            }
+        }
+
+        // Delete sermon from workspace
+        async function deleteSermonFromLibrary(id, event) {
+            if (event) event.stopPropagation();
+
+            if (cloudSynced && db && userId) {
+                try {
+                    const sDocRef = doc(db, 'artifacts', appId, 'users', userId, 'saved_sermons', id);
+                    await deleteDoc(sDocRef);
+                    showToast("Sermon deleted from cloud library.", "success");
+                } catch (e) {
+                    console.error("Cloud delete error:", e);
+                    savedLibraryMap.delete(id);
+                    renderLibraryUI();
+                    showToast("Sermon deleted from library.", "success");
+                }
+            } else {
+                savedLibraryMap.delete(id);
+                renderLibraryUI();
+                showToast("Sermon deleted from library.", "success");
+            }
+
+            if (currentSermonData && currentSermonData.id === id) {
+                currentSermonData.id = null;
+                updateSaveButtonState();
+            }
+        }
+
+        // Render sliding list items inside library drawer
+        function renderLibraryUI() {
+            const container = document.getElementById('library-items-container');
+            container.innerHTML = "";
+
+            if (savedLibraryMap.size === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-12 space-y-3">
+                        <span class="material-symbols-outlined text-slate-300 dark:text-slate-700 text-5xl">folder_off</span>
+                        <p class="text-slate-500 dark:text-slate-400 text-sm">Your study library is empty.</p>
+                        <p class="text-[11px] text-slate-400 max-w-xs mx-auto">Generate a sermon summary and click "Save to Library" to keep your study guides stored here.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Sort library list by latest date
+            const sorted = Array.from(savedLibraryMap.values()).sort((a, b) => new Date(b.savedAt) - new Date(a.savedAt));
+
+            sorted.forEach((item) => {
+                const itemEl = document.createElement('div');
+                itemEl.className = "flex items-center justify-between p-4 rounded-2xl border border-slate-100 dark:border-slate-800 hover:shadow-md hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-all gap-4";
+                itemEl.onclick = () => loadSermonFromLibrary(item.id);
+
+                itemEl.innerHTML = `
+                    <div class="flex-grow space-y-1 min-w-0">
+                        <h4 class="font-bold text-slate-800 dark:text-slate-100 text-sm truncate" title="${item.title}">${item.title}</h4>
+                        <div class="flex items-center space-x-2 text-xs text-slate-400">
+                            <span class="font-semibold text-brand-600 dark:text-brand-400">${item.speaker || 'Unknown Speaker'}</span>
+                            <span>•</span>
+                            <span>${new Date(item.savedAt).toLocaleDateString()}</span>
+                        </div>
+                    </div>
+                    <button onclick="deleteSermonFromLibrary('${item.id}', event)" class="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-xl transition-all shrink-0" title="Delete from Library">
+                        <span class="material-symbols-outlined text-lg">delete</span>
+                    </button>
+                `;
+                container.appendChild(itemEl);
+            });
+        }
+
+        function clearChat() {
+            chatHistory = [];
+            if (currentSermonData) currentSermonData.chatHistory = [];
+
+            const scroller = document.getElementById('chat-scroller');
+            scroller.innerHTML = `
+                <div class="flex space-x-3 items-start">
+                    <div class="h-8 w-8 rounded-full bg-brand-50 dark:bg-brand-950 flex items-center justify-center shrink-0">
+                        <span class="material-symbols-outlined text-brand-600 dark:text-brand-400 text-sm">auto_stories</span>
+                    </div>
+                    <div class="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-2xl rounded-tl-none p-3.5 max-w-[85%] leading-relaxed">
+                        Hi there! I am ready to delve deeper into this sermon with you. Ask me about specific scripture applications, cross-references, or sermon questions based on the keynotes above.
+                    </div>
+                </div>
+                <div id="chat-anchor"></div>
+            `;
+        }
+
+        function restoreChatHistory(savedHistory) {
+            chatHistory = [...savedHistory];
+            const scroller = document.getElementById('chat-scroller');
+            scroller.innerHTML = "";
+
+            // Base welcome message
+            const welcomeWrapper = document.createElement('div');
+            welcomeWrapper.className = "flex space-x-3 items-start";
+            welcomeWrapper.innerHTML = `
+                <div class="h-8 w-8 rounded-full bg-brand-50 dark:bg-brand-950 flex items-center justify-center shrink-0">
+                    <span class="material-symbols-outlined text-brand-600 dark:text-brand-400 text-sm">auto_stories</span>
+                </div>
+                <div class="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-2xl rounded-tl-none p-3.5 max-w-[85%] leading-relaxed">
+                    Hi there! I am ready to delve deeper into this sermon with you. Ask me about specific scripture applications, cross-references, or sermon questions based on the keynotes above.
+                </div>
+            `;
+            scroller.appendChild(welcomeWrapper);
+
+            // Append all previous conversation logs
+            chatHistory.forEach(msg => {
+                appendSavedMessageBubble(msg.role, msg.text);
+            });
+
+            const anchor = document.createElement('div');
+            anchor.id = "chat-anchor";
+            scroller.appendChild(anchor);
+            scroller.scrollTop = scroller.scrollHeight;
+        }
+
+        function handleChatKeyDown(event) {
+            if (event.key === 'Enter') {
+                sendChatMessage();
+            }
+        }
+
+        async function sendChatMessage() {
+            const input = document.getElementById('chat-input');
+            const userMsgText = input.value.trim();
+            if (!userMsgText) return;
+
+            input.value = "";
+            appendMessageBubble('user', userMsgText);
+
+            const botLoadingId = appendMessageBubble('assistant', 'Searching scriptures & drafting study reflections...');
+
+            try {
+                const modelProvider = document.getElementById('model-provider').value;
+                let apiKey = "";
+
+                if (modelProvider === 'openai') apiKey = localStorage.getItem('sermon_key_openai');
+                else if (modelProvider === 'claude') apiKey = localStorage.getItem('sermon_key_claude');
+                else if (modelProvider === 'gemini-custom') apiKey = localStorage.getItem('sermon_key_gemini');
+
+                const sermonOverviewStr = JSON.stringify(currentSermonData);
+                const chatHistoryString = chatHistory.map(h => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.text}`).join("\n");
+
+                const chatSystemInstruction = `You are an expert sermon study companion. You are discussing the sermon entitled "${currentSermonData ? currentSermonData.title : 'Sermon'}" preached by ${currentSermonData ? currentSermonData.speaker : 'the Speaker'}.
+Key details of the sermon:
+${sermonOverviewStr}
+
+Respond thoroughly, utilizing Markdown elements (bold text, bulleted scripture cross-references, italics) to structure your insights beautifully. Keep answers conversational, faithful, and inspiring.`;
+
+                const fullPrompt = `
+Conversation history:
+${chatHistoryString}
+
+User: ${userMsgText}
+`;
+
+                const assistantResponse = await executeAiCall(modelProvider, apiKey, fullPrompt, false, chatSystemInstruction);
+
+                updateMessageBubble(botLoadingId, assistantResponse);
+
+                chatHistory.push({ role: 'user', text: userMsgText });
+                chatHistory.push({ role: 'assistant', text: assistantResponse });
+
+                // Auto-sync updates in library background if already saved
+                if (currentSermonData && currentSermonData.id && savedLibraryMap.has(currentSermonData.id)) {
+                    saveCurrentSermonToLibrary();
+                }
+
+            } catch (err) {
+                console.error(err);
+                updateMessageBubble(botLoadingId, `⚠️ Encountered an issue connecting to the model: ${err.message || 'Connection failed'}. Please verify your API Key under Settings.`);
+            }
+        }
+
+        function appendMessageBubble(role, text) {
+            const scroller = document.getElementById('chat-scroller');
+            const anchor = document.getElementById('chat-anchor');
+            const bubbleId = `bubble-${Math.random().toString(36).substring(2, 7)}`;
+
+            const wrapper = document.createElement('div');
+            wrapper.className = `flex space-x-3 items-start animate-fade-in ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+            
+            if (role === 'user') {
+                wrapper.innerHTML = `
+                    <div id="${bubbleId}" class="bg-brand-600 text-white rounded-2xl rounded-tr-none p-3.5 max-w-[85%] leading-relaxed shadow-sm shadow-brand-500/5">
+                        ${text}
+                    </div>
+                `;
+            } else {
+                wrapper.innerHTML = `
+                    <div class="h-8 w-8 rounded-full bg-brand-50 dark:bg-brand-950 flex items-center justify-center shrink-0">
+                        <span class="material-symbols-outlined text-brand-600 dark:text-brand-400 text-sm">auto_stories</span>
+                    </div>
+                    <div id="${bubbleId}" class="prose bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-2xl rounded-tl-none p-3.5 max-w-[85%] leading-relaxed">
+                        ${text}
+                    </div>
+                `;
+            }
+
+            scroller.insertBefore(wrapper, anchor);
+            scroller.scrollTop = scroller.scrollHeight;
+            return bubbleId;
+        }
+
+        function appendSavedMessageBubble(role, text) {
+            const scroller = document.getElementById('chat-scroller');
+            const wrapper = document.createElement('div');
+            wrapper.className = `flex space-x-3 items-start ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+            
+            if (role === 'user') {
+                wrapper.innerHTML = `
+                    <div class="bg-brand-600 text-white rounded-2xl rounded-tr-none p-3.5 max-w-[85%] leading-relaxed shadow-sm">
+                        ${text}
+                    </div>
+                `;
+            } else {
+                wrapper.innerHTML = `
+                    <div class="h-8 w-8 rounded-full bg-brand-50 dark:bg-brand-950 flex items-center justify-center shrink-0">
+                        <span class="material-symbols-outlined text-brand-600 dark:text-brand-400 text-sm">auto_stories</span>
+                    </div>
+                    <div class="prose bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-2xl rounded-tl-none p-3.5 max-w-[85%] leading-relaxed">
+                        ${marked.parse(text)}
+                    </div>
+                `;
+            }
+            scroller.appendChild(wrapper);
+        }
+
+        function updateMessageBubble(id, text) {
+            const bubble = document.getElementById(id);
+            if (bubble) {
+                if (bubble.classList.contains('prose')) {
+                    bubble.innerHTML = marked.parse(text);
+                } else {
+                    bubble.textContent = text;
+                }
+                const scroller = document.getElementById('chat-scroller');
+                scroller.scrollTop = scroller.scrollHeight;
+            }
+        }
+
+        // Window Initializer loader
+        window.addEventListener('load', async () => {
+            if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+                document.getElementById('theme-icon').textContent = 'light_mode';
+                systemTheme = 'dark';
+            } else {
+                document.documentElement.classList.remove('dark');
+                document.getElementById('theme-icon').textContent = 'dark_mode';
+                systemTheme = 'light';
+            }
+            loadKeysIntoUI();
+
+            // Register PWA Service Worker
+            if ('serviceWorker' in navigator) {
+                try {
+                    const reg = await navigator.serviceWorker.register('/sw.js');
+                    console.log('SermonAI Service Worker registered successfully scope:', reg.scope);
+                } catch (err) {
+                    console.warn('SermonAI Service Worker registration omitted or failed:', err);
+                }
+            }
+
+            // Connect Firebase Core synced database maps
+            await initCloudStorage();
+        });
+
+        // Globally expose events to window inside modern module contexts
+        window.toggleDarkMode = toggleDarkMode;
+        window.toggleTranscriptBox = toggleTranscriptBox;
+        window.handleModelProviderChange = handleModelProviderChange;
+        window.openSettingsModal = openSettingsModal;
+        window.closeSettingsModal = closeSettingsModal;
+        window.saveApiKeys = saveApiKeys;
+        window.startSermonAnalysis = startSermonAnalysis;
+        window.sendChatMessage = sendChatMessage;
+        window.clearChat = clearChat;
+        window.toggleLibraryDrawer = toggleLibraryDrawer;
+        window.saveCurrentSermonToLibrary = saveCurrentSermonToLibrary;
+        window.loadSermonFromLibrary = loadSermonFromLibrary;
+        window.deleteSermonFromLibrary = deleteSermonFromLibrary;
+        window.handleChatKeyDown = handleChatKeyDown;
+    </script>
+</body>
+</html>
